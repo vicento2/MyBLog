@@ -1,74 +1,77 @@
 <?php
-// Database connection
-$conn = new mysqli("localhost", "username", "password", "blog_db");
+// Connect to the database
+$host = 'localhost';  // Update with your DB host
+$username = 'root';   // Update with your DB username
+$password = '';       // Update with your DB password
+$dbname = 'blog';     // Update with your DB name
+
+$conn = new mysqli($host, $username, $password, $dbname);
 
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
-// Handle form submission to create a new post
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'createPost') {
-    $category = $conn->real_escape_string($_POST['postCategory']);
-    $title = $conn->real_escape_string($_POST['postTitle']);
-    $description = $conn->real_escape_string($_POST['postDescription']);
-
-    $sql = "INSERT INTO posts (category, title, description) VALUES ('$category', '$title', '$description')";
-    if ($conn->query($sql)) {
-        echo json_encode(['success' => true]);
-    } else {
-        echo json_encode(['success' => false, 'error' => $conn->error]);
-    }
-    exit;
-}
-
-// Fetch all posts
+// Fetch posts from the database
+$sql = "SELECT * FROM posts ORDER BY created_at DESC";
+$result = $conn->query($sql);
 $posts = [];
-$result = $conn->query("SELECT * FROM posts ORDER BY date_posted DESC");
-if ($result) {
+
+if ($result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
         $posts[] = $row;
     }
 }
 
+// Handle form submission for adding new posts
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_post'])) {
+    $category = $_POST['category'];
+    $title = $_POST['title'];
+    $description = $_POST['description'];
+    $date = date("Y-m-d H:i:s");
+
+    $insert_sql = "INSERT INTO posts (category, title, description, created_at) VALUES ('$category', '$title', '$description', '$date')";
+
+    if ($conn->query($insert_sql) === TRUE) {
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit();
+    } else {
+        echo "Error: " . $insert_sql . "<br>" . $conn->error;
+    }
+}
+
+// Handle post deletion
+if (isset($_GET['delete_id'])) {
+    $post_id = $_GET['delete_id'];
+    $delete_sql = "DELETE FROM posts WHERE id = '$post_id'";
+
+    if ($conn->query($delete_sql) === TRUE) {
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit();
+    } else {
+        echo "Error: " . $delete_sql . "<br>" . $conn->error;
+    }
+}
+
+$conn->close();
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width">
-    <title>PHP Blog</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post Management</title>
     <link rel="stylesheet" href="css.css">
-    <script>
-        async function createPost(event) {
-            event.preventDefault();
-
-            const formData = new FormData(document.getElementById('postForm'));
-            formData.append('action', 'createPost');
-
-            const response = await fetch('', {
-                method: 'POST',
-                body: formData,
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                alert('Post created successfully!');
-                location.reload();
-            } else {
-                alert('Error creating post: ' + result.error);
-            }
-        }
-    </script>
 </head>
-
 <body>
     <header>
-        <h1 class="logo"><a href="#">Your Blog</a></h1>
+        <div class="logo">
+            <h1>My Blog</h1>
+        </div>
         <nav>
             <ul>
-                <li><a href="/">Home</a></li>
-                <li><a href="#" id="createPostBtn" onclick="document.getElementById('createPostModal').style.display='flex'">Create Post</a></li>
+                <li><a href="#">Home</a></li>
+                <li><a href="#">About</a></li>
                 <li><a href="#">Contact</a></li>
             </ul>
         </nav>
@@ -76,36 +79,39 @@ if ($result) {
 
     <main>
         <div class="post-container">
+            <!-- Display posts from the database -->
             <?php foreach ($posts as $post): ?>
-                <div class="post-box">
-                    <h1 class="post-title"><?= htmlspecialchars($post['title']) ?></h1>
-                    <h2 class="category"><?= htmlspecialchars($post['category']) ?></h2>
-                    <span class="post-date"><?= htmlspecialchars(date('d M Y', strtotime($post['date_posted']))) ?></span>
-                    <p class="post-description"><?= htmlspecialchars(substr($post['description'], 0, 100)) ?>...</p>
+                <div class="post-box" data-id="<?= htmlspecialchars($post['id']); ?>">
+                    <h1 class="post-title"><?= htmlspecialchars($post['title']); ?></h1>
+                    <h2 class="category"><?= htmlspecialchars($post['category']); ?></h2>
+                    <span class="post-date"><?= htmlspecialchars($post['created_at']); ?></span>
+                    <p class="post-description"><?= htmlspecialchars(substr($post['description'], 0, 100)); ?>...</p>
+                    <a href="?delete_id=<?= $post['id']; ?>" class="delete-post">Delete</a>
                 </div>
             <?php endforeach; ?>
         </div>
+
+        <button id="createPostBtn">Create Post</button>
+
+        <!-- Modal for Creating a New Post -->
+        <div id="createPostModal" class="modal">
+            <div class="modal-content">
+                <span id="closeModal" class="close">&times;</span>
+                <h2>Create New Post</h2>
+                <form action="<?= $_SERVER['PHP_SELF']; ?>" method="POST" id="postForm">
+                    <label for="category">Category</label>
+                    <input type="text" name="category" id="category" required><br>
+                    <label for="title">Title</label>
+                    <input type="text" name="title" id="title" required><br>
+                    <label for="description">Description</label>
+                    <textarea name="description" id="description" required></textarea><br>
+                    <button type="submit" name="submit_post" id="postSubmitBtn">Submit</button>
+                </form>
+            </div>
+        </div>
     </main>
 
-    <div id="createPostModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="document.getElementById('createPostModal').style.display='none'">&times;</span>
-            <h2>Create New Post</h2>
-            <form id="postForm" onsubmit="createPost(event)">
-                <label for="postCategory">Category</label>
-                <input type="text" id="postCategory" name="postCategory" required><br>
-                <label for="postTitle">Title</label>
-                <input type="text" id="postTitle" name="postTitle" required><br>
-                <label for="postDescription">Description</label>
-                <textarea id="postDescription" name="postDescription" required></textarea><br>
-                <button type="submit">Submit</button>
-            </form>
-        </div>
-    </div>
-
-    <footer>
-        <p>© 2025 Your Blog. All Rights Reserved.</p>
-    </footer>
+    <!-- Include your JavaScript file -->
+    <script src="ber.js"></script>
 </body>
-
 </html>
